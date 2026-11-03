@@ -653,6 +653,10 @@
                                     "description": "Image file rendered as a raw binary string"
                                 },
                                 {
+                                    "const": "spin",
+                                    "description": "The builtin logo (or a text file) turned into a spinning 3D slab (spinfetch extension, default)"
+                                },
+                                {
                                     "const": "none",
                                     "description": "Disable logo printing"
                                 }
@@ -661,7 +665,54 @@
                         },
                         "source": {
                             "type": "string",
-                            "description": "Path to the logo source file"
+                            "description": "Path to the logo source file. For the spin logo: auto (the detected OS), any builtin logo name such as arch or gentoo, or a text file in fastfetch logo syntax"
+                        },
+                        "variant": {
+                            "description": "Size of the spin logo: the normal or the small builtin logo (spinfetch extension)",
+                            "enum": [
+                                "full",
+                                "minimal"
+                            ],
+                            "default": "full"
+                        },
+                        "spin": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "description": "Animated 3D logo options (spinfetch extension)",
+                            "properties": {
+                                "speed": {
+                                    "type": "number",
+                                    "description": "Rotation speed in radians per second",
+                                    "minimum": 0,
+                                    "maximum": 20,
+                                    "default": 1
+                                },
+                                "tilt": {
+                                    "type": "number",
+                                    "description": "Camera tilt in degrees",
+                                    "minimum": -80,
+                                    "maximum": 80,
+                                    "default": 0
+                                },
+                                "fps": {
+                                    "type": "integer",
+                                    "description": "Animation frame rate",
+                                    "minimum": 1,
+                                    "maximum": 120,
+                                    "default": 20
+                                },
+                                "frames": {
+                                    "type": "integer",
+                                    "description": "Stop after this many frames; 0 runs until a key is pressed",
+                                    "minimum": 0,
+                                    "default": 0
+                                },
+                                "sshSafe": {
+                                    "type": "boolean",
+                                    "description": "Cap the animation at 10 fps for remote sessions",
+                                    "default": false
+                                }
+                            }
                         },
                         "color": {
                             "type": "object",

@@ -564,6 +564,10 @@ set(LIBFASTFETCH_SRC
     src/detection/zpool/zpool.c
     src/logo/builtin.c
     src/logo/logo.c
+    src/logo/spin/loop.c
+    src/logo/spin/render.c
+    src/logo/spin/spin.c
+    src/detect/spin_wizard.c
     src/modules/modules.c
     src/options/display.c
     src/options/logo.c
@@ -2262,8 +2266,12 @@ endif()
 add_executable(fastfetch
     src/fastfetch.c
 )
+# The fork installs as spinfetch, next to an unmodified fastfetch. Keeping the
+# upstream CMake target name makes the rest of upstream's build logic (and its
+# rebase surface) untouched.
+set_target_properties(fastfetch PROPERTIES OUTPUT_NAME spinfetch)
 target_compile_definitions(fastfetch
-    PRIVATE FASTFETCH_TARGET_BINARY_NAME=fastfetch
+    PRIVATE FASTFETCH_TARGET_BINARY_NAME=spinfetch
 )
 target_link_libraries(fastfetch
     PRIVATE libfastfetch
@@ -2480,6 +2488,13 @@ if (BUILD_TESTS)
         PRIVATE libfastfetch
     )
 
+    add_executable(fastfetch-test-spin
+        tests/spin.c
+    )
+    target_link_libraries(fastfetch-test-spin
+        PRIVATE libfastfetch
+    )
+
     enable_testing()
     add_test(NAME test-cache COMMAND fastfetch-test-cache)
     add_test(NAME test-logo COMMAND fastfetch-test-logo)
@@ -2500,6 +2515,7 @@ if (BUILD_TESTS)
     add_test(NAME test-endian COMMAND fastfetch-test-endian)
     add_test(NAME test-endian-bigendian COMMAND fastfetch-test-endian-bigendian)
     add_test(NAME test-gpu-pci COMMAND fastfetch-test-gpu-pci)
+    add_test(NAME test-spin COMMAND fastfetch-test-spin)
 endif()
 
 ##################

@@ -21,8 +21,22 @@ typedef enum FFLogoType: uint8_t {
     FF_LOGO_TYPE_IMAGE_ITERM,        // image file, printed as iterm graphics protocol
     FF_LOGO_TYPE_IMAGE_CHAFA,        // image file, printed as ascii art using libchafa
     FF_LOGO_TYPE_IMAGE_RAW,          // image file, printed as raw binary string
+    FF_LOGO_TYPE_SPIN,               // builtin logo spun as a 3D slab (spinfetch extension)
     FF_LOGO_TYPE_NONE,               // `--logo none`, but still applies colors to the system information output (unless `--pipe` is set)
 } FFLogoType;
+
+typedef enum FFLogoVariant: uint8_t {
+    FF_LOGO_VARIANT_FULL,    // the normal builtin logo
+    FF_LOGO_VARIANT_MINIMAL, // the small builtin logo, if there is one
+} FFLogoVariant;
+
+typedef struct FFOptionsLogoSpin {
+    float speed;      // radians per second around Y
+    float tilt;       // degrees around X
+    uint32_t fps;     // 0 = auto (20, or 10 with sshSafe)
+    bool sshSafe;     // changed-cells-only is always used; lower the default frame rate
+    uint32_t frames;  // 0 = until a key is pressed
+} FFOptionsLogoSpin;
 
 typedef enum FFLogoPosition: uint8_t {
     FF_LOGO_POSITION_LEFT,
@@ -46,7 +60,9 @@ typedef enum FFLogoCacheStrategy: uint8_t {
 typedef struct FFOptionsLogo {
     FFstrbuf source;
     FFLogoType type;
+    FFLogoVariant variant;
     FFLogoPosition position;
+    FFOptionsLogoSpin spin;
     FFstrbuf colors[FASTFETCH_LOGO_MAX_COLORS];
     uint32_t width;
     uint32_t height;

@@ -28,6 +28,20 @@ static bool logoTypeIsImage(FFLogoType type) {
 // rather than it being rejected as an unknown option. --chafa is not among them: it is gated on
 // FF_HAVE_CHAFA, which a build without image logos turns off as well, and it keeps the message it
 // has always given in that case.
+static float logoParseFloat(const char* key, const char* value, float min, float max) {
+    if (value == nullptr) {
+        fprintf(stderr, "Error: usage: %s <number>\n", key);
+        exit(480);
+    }
+    char* end = nullptr;
+    double parsed = strtod(value, &end);
+    if (end == value || *end != '\0' || parsed < min || parsed > max) {
+        fprintf(stderr, "Error: usage: %s <number between %g and %g>\n", key, min, max);
+        exit(479);
+    }
+    return (float) parsed;
+}
+
 static void logoParseImageFlag(FFOptionsLogo* options, const char* key, const char* value, FFLogoType type) {
 #if FF_HAVE_IMAGE_LOGO
     ffOptionParseString(key, value, &options->source);
@@ -55,7 +69,13 @@ const char* ffLogoPositionToString(FFLogoPosition position) {
 
 void ffOptionsInitLogo(FFOptionsLogo* options) {
     ffStrbufInit(&options->source);
-    options->type = FF_LOGO_TYPE_AUTO;
+    options->type = FF_LOGO_TYPE_SPIN;
+    options->variant = FF_LOGO_VARIANT_FULL;
+    options->spin.speed = 1.0f;
+    options->spin.tilt = 0.0f;
+    options->spin.fps = 0; // auto: 20, or 10 with sshSafe
+    options->spin.sshSafe = false;
+    options->spin.frames = 0;
     for (uint8_t i = 0; i < (uint8_t) FASTFETCH_LOGO_MAX_COLORS; ++i) {
         ffStrbufInit(&options->colors[i]);
     }
@@ -83,6 +103,31 @@ void ffOptionsInitLogo(FFOptionsLogo* options) {
 bool ffOptionsParseLogoCommandLine(FFOptionsLogo* options, const char* key, const char* value) {
     if (ffStrEqualsIgnCase(key, "-l")) {
         goto logoType;
+    }
+
+    // The documented short spelling is `-logo-variant`; everything else uses the upstream
+    // double-dash convention.
+    if (ffStrEqualsIgnCase(key, "-logo-variant")) {
+        options->variant = (FFLogoVariant) ffOptionParseEnum(key, value, (FFKeyValuePair[]) {
+                                                                              { "full", FF_LOGO_VARIANT_FULL },
+                                                                              { "minimal", FF_LOGO_VARIANT_MINIMAL },
+                                                                              {},
+                                                                          });
+        return true;
+    }
+
+    if (ffStrEqualsIgnCase(key, "--fps")) {
+        options->spin.fps = ffOptionParseUInt32(key, value);
+        if (options->spin.fps < 1 || options->spin.fps > 120) {
+            fprintf(stderr, "Error: %s must be between 1 and 120\n", key);
+            exit(479);
+        }
+        return true;
+    }
+
+    if (ffStrEqualsIgnCase(key, "--frames")) {
+        options->spin.frames = ffOptionParseUInt32(key, value);
+        return true;
     }
 
     const char* subKey = ffOptionTestPrefix(key, "logo");
@@ -118,6 +163,7 @@ bool ffOptionsParseLogoCommandLine(FFOptionsLogo* options, const char* key, cons
                                                                            { "iterm", FF_LOGO_TYPE_IMAGE_ITERM },
                                                                            { "chafa", FF_LOGO_TYPE_IMAGE_CHAFA },
                                                                            { "raw", FF_LOGO_TYPE_IMAGE_RAW },
+                                                                           { "spin", FF_LOGO_TYPE_SPIN },
                                                                            { "none", FF_LOGO_TYPE_NONE },
                                                                            {},
                                                                        });
@@ -142,6 +188,26 @@ bool ffOptionsParseLogoCommandLine(FFOptionsLogo* options, const char* key, cons
                 exit(477);
             }
             ffOptionParseColor(value, &options->colors[index]);
+        } else if (ffStrEqualsIgnCase(subKey, "variant")) {
+            options->variant = (FFLogoVariant) ffOptionParseEnum(key, value, (FFKeyValuePair[]) {
+                                                                                  { "full", FF_LOGO_VARIANT_FULL },
+                                                                                  { "minimal", FF_LOGO_VARIANT_MINIMAL },
+                                                                                  {},
+                                                                              });
+        } else if (ffStrEqualsIgnCase(subKey, "spin-speed")) {
+            options->spin.speed = logoParseFloat(key, value, 0.0f, 20.0f);
+        } else if (ffStrEqualsIgnCase(subKey, "spin-tilt")) {
+            options->spin.tilt = logoParseFloat(key, value, -80.0f, 80.0f);
+        } else if (ffStrEqualsIgnCase(subKey, "spin-fps") || ffStrEqualsIgnCase(key, "--fps")) {
+            options->spin.fps = ffOptionParseUInt32(key, value);
+            if (options->spin.fps < 1 || options->spin.fps > 120) {
+                fprintf(stderr, "Error: %s must be between 1 and 120\n", key);
+                exit(479);
+            }
+        } else if (ffStrEqualsIgnCase(subKey, "spin-ssh-safe")) {
+            options->spin.sshSafe = ffOptionParseBoolean(value);
+        } else if (ffStrEqualsIgnCase(subKey, "spin-frames") || ffStrEqualsIgnCase(key, "--frames")) {
+            options->spin.frames = ffOptionParseUInt32(key, value);
         } else if (ffStrEqualsIgnCase(subKey, "width")) {
             options->width = ffOptionParseUInt32(key, value);
         } else if (ffStrEqualsIgnCase(subKey, "height")) {
@@ -323,6 +389,7 @@ const char* ffOptionsParseLogoJsonConfig(FFOptionsLogo* options, yyjson_val* roo
                                                                        { "iterm", FF_LOGO_TYPE_IMAGE_ITERM },
                                                                        { "chafa", FF_LOGO_TYPE_IMAGE_CHAFA },
                                                                        { "raw", FF_LOGO_TYPE_IMAGE_RAW },
+                                                                       { "spin", FF_LOGO_TYPE_SPIN },
                                                                        { "none", FF_LOGO_TYPE_NONE },
                                                                        {},
                                                                    });
@@ -336,6 +403,52 @@ const char* ffOptionsParseLogoJsonConfig(FFOptionsLogo* options, yyjson_val* roo
             }
 #endif
             options->type = (FFLogoType) value;
+            continue;
+        } else if (unsafe_yyjson_equals_str(key, "variant")) {
+            int value;
+            const char* error = ffJsonConfigParseEnum(val, &value, (FFKeyValuePair[]) {
+                                                                       { "full", FF_LOGO_VARIANT_FULL },
+                                                                       { "minimal", FF_LOGO_VARIANT_MINIMAL },
+                                                                       {},
+                                                                   });
+            if (error) {
+                return error;
+            }
+            options->variant = (FFLogoVariant) value;
+            continue;
+        } else if (unsafe_yyjson_equals_str(key, "spin")) {
+            if (!yyjson_is_obj(val)) {
+                return "Property 'logo.spin' must be an object";
+            }
+
+            yyjson_val *spinKey, *spinVal;
+            size_t spinIdx, spinMax;
+            yyjson_obj_foreach (val, spinIdx, spinMax, spinKey, spinVal) {
+                if (unsafe_yyjson_equals_str(spinKey, "speed")) {
+                    if (!yyjson_is_num(spinVal) || yyjson_get_num(spinVal) < 0 || yyjson_get_num(spinVal) > 20) {
+                        return "Property 'logo.spin.speed' must be a number between 0 and 20";
+                    }
+                    options->spin.speed = (float) yyjson_get_num(spinVal);
+                } else if (unsafe_yyjson_equals_str(spinKey, "tilt")) {
+                    if (!yyjson_is_num(spinVal) || yyjson_get_num(spinVal) < -80 || yyjson_get_num(spinVal) > 80) {
+                        return "Property 'logo.spin.tilt' must be a number between -80 and 80";
+                    }
+                    options->spin.tilt = (float) yyjson_get_num(spinVal);
+                } else if (unsafe_yyjson_equals_str(spinKey, "fps")) {
+                    uint32_t fps;
+                    if (!ffJsonConfigParseUInt32(spinVal, &fps, 120) || fps == 0) {
+                        return "Property 'logo.spin.fps' must be an integer between 1 and 120";
+                    }
+                    options->spin.fps = fps;
+                } else if (unsafe_yyjson_equals_str(spinKey, "sshSafe")) {
+                    if (!yyjson_is_bool(spinVal)) {
+                        return "Property 'logo.spin.sshSafe' must be a boolean";
+                    }
+                    options->spin.sshSafe = yyjson_get_bool(spinVal);
+                } else {
+                    return "Unknown logo.spin key";
+                }
+            }
             continue;
         } else if (unsafe_yyjson_equals_str(key, "source")) {
             ffStrbufSetJsonVal(&options->source, val);
@@ -568,12 +681,27 @@ void ffOptionsGenerateLogoJsonConfig(FFdata* data, FFOptionsLogo* options) {
         case FF_LOGO_TYPE_IMAGE_RAW:
             yyjson_mut_obj_add_str(doc, obj, "type", "raw");
             break;
+        case FF_LOGO_TYPE_SPIN:
+            yyjson_mut_obj_add_str(doc, obj, "type", "spin");
+            yyjson_mut_obj_add_str(doc, obj, "variant", options->variant == FF_LOGO_VARIANT_MINIMAL ? "minimal" : "full");
+            break;
         default:
             yyjson_mut_obj_add_str(doc, obj, "type", "auto");
             break;
     }
 
     yyjson_mut_obj_add_str(doc, obj, "source", options->source.chars);
+
+    if (options->type == FF_LOGO_TYPE_SPIN) {
+        yyjson_mut_val* spin = yyjson_mut_obj(doc);
+        yyjson_mut_obj_add_real(doc, spin, "speed", options->spin.speed);
+        yyjson_mut_obj_add_real(doc, spin, "tilt", options->spin.tilt);
+        if (options->spin.fps > 0) {
+            yyjson_mut_obj_add_uint(doc, spin, "fps", options->spin.fps);
+        }
+        yyjson_mut_obj_add_bool(doc, spin, "sshSafe", options->spin.sshSafe);
+        yyjson_mut_obj_add_val(doc, obj, "spin", spin);
+    }
 
     {
         yyjson_mut_val* color = yyjson_mut_obj(doc);

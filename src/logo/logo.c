@@ -8,6 +8,7 @@
 #include "detection/os/os.h"
 #include "detection/terminalshell/terminalshell.h"
 #include "detection/terminalsize/terminalsize.h"
+#include "logo/spin/spin.h"
 
 #include <ctype.h>
 #include <stdlib.h>
@@ -651,6 +652,11 @@ void ffLogoPrint(void) {
         return;
     }
 
+    if (options->type == FF_LOGO_TYPE_SPIN) {
+        ffSpinLogoPrint();
+        return;
+    }
+
     // If the source is not set, we can directly print the detected logo.
     if (options->source.length == 0) {
         ffLogoPrintDetected(options->type == FF_LOGO_TYPE_SMALL ? FF_LOGO_SIZE_SMALL : FF_LOGO_SIZE_NORMAL);
@@ -860,4 +866,8 @@ const FFlogo* ffLogoGetBuiltinForName(const FFstrbuf* name, FFLogoSize size) {
 
 const FFlogo* ffLogoGetBuiltinDetected(FFLogoSize size) {
     return logoGetBuiltinDetected(size);
+}
+
+void ffLogoApplyColors(const FFlogo* logo, bool replacement) {
+    logoApplyColors(logo, replacement);
 }

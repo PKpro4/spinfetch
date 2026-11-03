@@ -11,7 +11,9 @@
 #include "common/time.h"
 #include "common/strutil.h"
 #include "common/mallocHelper.h"
+#include "detect/spin_wizard.h"
 #include "fastfetch_datatext.h"
+#include "logo/spin/spin.h"
 
 #include <stdlib.h>
 #include <ctype.h>
@@ -490,6 +492,7 @@ static void optionParseConfigFile(FFdata* data, const char* key, const char* val
     }
 
     if (value[0] == '\0' || ffStrEqualsIgnCase(value, "none")) {
+        data->configNone = true;
         return;
     }
 
@@ -517,21 +520,27 @@ static void optionParseConfigFile(FFdata* data, const char* key, const char* val
         : YYJSON_READ_JSON5;
 
     if (parseJsoncFile(data, absolutePath.chars, flag)) {
+        data->hadConfigFile = true;
         return;
     }
 
-    // Try to load as a relative path with the config directory
-
+    // Try to load as a relative path with the config directory. The fork's own
+    // directory wins, then the upstream one, so a stock fastfetch config keeps
+    // working unchanged.
+    static const char* const configRelativeDirs[] = { "spinfetch/", "fastfetch/" };
     FF_LIST_FOR_EACH (FFstrbuf, path, instance.state.platform.configDirs) {
-        ffStrbufSet(&absolutePath, path);
-        ffStrbufAppendS(&absolutePath, "fastfetch/");
-        ffStrbufAppendS(&absolutePath, value);
-        if (needExtension) {
-            ffStrbufAppendS(&absolutePath, ".jsonc");
-        }
+        for (uint32_t i = 0; i < ARRAY_SIZE(configRelativeDirs); ++i) {
+            ffStrbufSet(&absolutePath, path);
+            ffStrbufAppendS(&absolutePath, configRelativeDirs[i]);
+            ffStrbufAppendS(&absolutePath, value);
+            if (needExtension) {
+                ffStrbufAppendS(&absolutePath, ".jsonc");
+            }
 
-        if (parseJsoncFile(data, absolutePath.chars, flag)) {
-            return;
+            if (parseJsoncFile(data, absolutePath.chars, flag)) {
+                data->hadConfigFile = true;
+                return;
+            }
         }
     }
 
@@ -734,21 +743,26 @@ static void parseOption(FFdata* data, const char* key, const char* value) {
 
 static void parseConfigFiles(FFdata* data) {
     if (__builtin_expect(data->genConfigPath.length == 0, true)) {
-        FF_LIST_FOR_EACH (FFstrbuf, dir, instance.state.platform.configDirs) {
-            uint32_t dirLength = dir->length;
+        static const struct {
+            const char* name;
+            yyjson_read_flag flag;
+        } candidates[] = {
+            { "spinfetch/config.jsonc", YYJSON_READ_ALLOW_COMMENTS | YYJSON_READ_ALLOW_TRAILING_COMMAS },
+            { "spinfetch/config.json5", YYJSON_READ_JSON5 },
+            { "fastfetch/config.jsonc", YYJSON_READ_ALLOW_COMMENTS | YYJSON_READ_ALLOW_TRAILING_COMMAS },
+            { "fastfetch/config.json5", YYJSON_READ_JSON5 },
+        };
 
-            ffStrbufAppendS(dir, "fastfetch/config.jsonc");
-            bool success = parseJsoncFile(data, dir->chars, YYJSON_READ_ALLOW_COMMENTS | YYJSON_READ_ALLOW_TRAILING_COMMAS);
-            ffStrbufSubstrBefore(dir, dirLength);
-            if (success) {
-                return;
-            }
-
-            ffStrbufAppendS(dir, "fastfetch/config.json5");
-            success = parseJsoncFile(data, dir->chars, YYJSON_READ_JSON5);
-            ffStrbufSubstrBefore(dir, dirLength);
-            if (success) {
-                return;
+        for (uint32_t i = 0; i < ARRAY_SIZE(candidates); ++i) {
+            FF_LIST_FOR_EACH (FFstrbuf, dir, instance.state.platform.configDirs) {
+                uint32_t dirLength = dir->length;
+                ffStrbufAppendS(dir, candidates[i].name);
+                bool success = parseJsoncFile(data, dir->chars, candidates[i].flag);
+                ffStrbufSubstrBefore(dir, dirLength);
+                if (success) {
+                    data->hadConfigFile = true;
+                    return;
+                }
             }
         }
     }
@@ -775,6 +789,26 @@ static void parseArguments(FFdata* data, int argc, char** argv, void (*parser)(F
             ++i;
         }
     }
+}
+
+typedef struct SpinRedrawContext {
+    FFdata* data;
+    bool useJsonConfig;
+} SpinRedrawContext;
+
+static void spinRedraw(void* userdata) {
+    SpinRedrawContext* context = userdata;
+    instance.state.keysHeight = 0;
+    ffLogoPrint();
+    if (context->useJsonConfig) {
+        ffPrintJsonConfig(context->data, false);
+    } else {
+        ffPrintCommandOption(context->data);
+    }
+    if (instance.config.logo.printRemaining) {
+        ffLogoPrintRemaining();
+    }
+    fflush(stdout);
 }
 
 static void run(FFdata* data) {
@@ -835,6 +869,18 @@ static void run(FFdata* data) {
             ffLogoPrintRemaining();
         }
         ffFinish();
+
+        // The animation owns the alternate screen and blocks until a key is
+        // pressed, so it must never run with --json, --pipe, or --watch.
+        if (instance.state.dynamicInterval == 0
+            && ffSpinLogoAnimationWanted()
+            && ffSpinLogoAnimationActive()) {
+            SpinRedrawContext context = {
+                .data = data,
+                .useJsonConfig = useJsonConfig,
+            };
+            ffSpinRunAnimation(spinRedraw, &context);
+        }
     }
 }
 
@@ -911,6 +957,16 @@ int main(int argc, char** argv) {
         parseConfigFiles(&data);
     }
     parseArguments(&data, argc, argv, (void*) parseOption);
+
+    FFSpinWizardResult wizard = ffSpinWizardMaybeRun(&data);
+    if (wizard != FF_SPIN_WIZARD_SKIP && wizard != FF_SPIN_WIZARD_CONTINUE) {
+        ffStrbufDestroy(&data.structure);
+        ffStrbufDestroy(&data.structureDisabled);
+        yyjson_doc_free(data.configDoc);
+        yyjson_mut_doc_free(data.resultDoc);
+        ffStrbufDestroy(&data.genConfigPath);
+        return wizard == FF_SPIN_WIZARD_ERROR ? 1 : 0;
+    }
 
     if (__builtin_expect(data.genConfigPath.length == 0, true)) {
         run(&data);

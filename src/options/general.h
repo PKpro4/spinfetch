@@ -12,6 +12,8 @@ typedef struct FFOptionsGeneral {
     bool multithreading;
     int32_t processingTimeout;
     bool detectVersion;
+    bool noWizard;   // `--no-wizard` / SPINFETCH_NO_WIZARD
+    bool configure;  // `--configure`
     FFstrbuf playerName;
 
 // Module options that cannot be put in module option structure

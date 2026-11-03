@@ -98,6 +98,10 @@ bool ffOptionsParseGeneralCommandLine(FFOptionsGeneral* options, const char* key
         options->processingTimeout = ffOptionParseInt32(key, value);
     } else if (ffStrEqualsIgnCase(key, "--detect-version")) {
         options->detectVersion = ffOptionParseBoolean(value);
+    } else if (ffStrEqualsIgnCase(key, "--no-wizard")) {
+        options->noWizard = true;
+    } else if (ffStrEqualsIgnCase(key, "--configure")) {
+        options->configure = true;
     } else if (ffStrEqualsIgnCase(key, "--player-name")) {
         ffOptionParseString(key, value, &options->playerName);
     }
@@ -123,6 +127,8 @@ void ffOptionsInitGeneral(FFOptionsGeneral* options) {
     options->processingTimeout = 5000;
     options->multithreading = true;
     options->detectVersion = true;
+    options->noWizard = false;
+    options->configure = false;
     ffStrbufInit(&options->playerName);
 
 #if defined(__linux__) || defined(__FreeBSD__) || defined(__sun) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__HAIKU__) || defined(__GNU__)

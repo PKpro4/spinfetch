@@ -113,9 +113,19 @@
                 "type": "path",
                 "optional": true
             }
+        },
+        {
+            "long": "configure",
+            "desc": "Run the spinfetch setup wizard and write spinfetch/config.jsonc",
+            "remark": "Requires an interactive terminal. Refuses to run with --pipe, --format json, --gen-config, --config none, --no-wizard, or SPINFETCH_NO_WIZARD"
         }
     ],
     "General": [
+        {
+            "long": "no-wizard",
+            "desc": "Disable the first-run setup wizard",
+            "remark": "The SPINFETCH_NO_WIZARD environment variable has the same effect. The wizard never runs on non-TTY output, with --pipe, --format json, or when a config file was loaded"
+        },
         {
             "long": "thread",
             "desc": "Use separate threads for HTTP requests",
@@ -203,8 +213,65 @@
                     "iterm": "Image file, rendered using the iTerm graphics protocol",
                     "chafa": "Image file, printed as ASCII art using libchafa",
                     "raw": "Image file, printed as raw binary string",
+                    "spin": "The builtin logo (or a text file) turned into a spinning 3D slab (spinfetch extension, default)",
                     "none": "Disable logo printing"
                 }
+            }
+        },
+        {
+            "long": "logo-variant",
+            "desc": "Set the size of the spinning logo",
+            "remark": "Used by \"--logo-type spin\" only",
+            "arg": {
+                "type": "enum",
+                "enum": {
+                    "full": "The normal builtin logo",
+                    "minimal": "The small builtin logo, if the distro has one"
+                },
+                "default": "full"
+            }
+        },
+        {
+            "long": "logo-spin-speed",
+            "desc": "Set the rotation speed of the animated 3D logo, in radians per second",
+            "arg": {
+                "type": "num",
+                "default": 1.0
+            }
+        },
+        {
+            "long": "logo-spin-tilt",
+            "desc": "Set the camera tilt of the animated 3D logo, in degrees",
+            "arg": {
+                "type": "num",
+                "default": 0
+            }
+        },
+        {
+            "long": "logo-spin-fps",
+            "desc": "Set the frame rate of the animated 3D logo",
+            "remark": "Alias: --fps",
+            "arg": {
+                "type": "num",
+                "default": 20
+            }
+        },
+        {
+            "long": "logo-spin-frames",
+            "desc": "Stop the animation after this many frames",
+            "remark": "Alias: --frames. Useful for automated tests; 0 means run until a key is pressed",
+            "arg": {
+                "type": "num",
+                "default": 0
+            }
+        },
+        {
+            "long": "logo-spin-ssh-safe",
+            "desc": "Cap the animation at 10 fps to keep remote sessions responsive",
+            "arg": {
+                "type": "bool",
+                "optional": true,
+                "default": false
             }
         },
         {

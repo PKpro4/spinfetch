@@ -18,6 +18,8 @@ typedef struct FFdata {
     FFstrbuf structureDisabled;  // Disabled modules in the output structure from command line
     FFstrbuf genConfigPath;      // Path to generate configuration file
     FFDataResultDocType docType; // Type of result document
-    bool configLoaded;
-    bool genConfigInteractive; // `--gen-config` entered the interactive CUI
+    bool configLoaded;           // `--config` was used, even with `none`
+    bool configNone;             // `--config none` explicitly disabled configuration
+    bool hadConfigFile;          // an on-disk config was actually parsed
+    bool genConfigInteractive;   // `--gen-config` entered the interactive CUI
 } FFdata;
